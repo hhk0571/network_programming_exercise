@@ -1,7 +1,15 @@
-# simple TCP Server/Client model to simulate ssh
+simple TCP Server/Client model to simulate ssh
+==============================
+
+Table of Contents
++ ![porpuse](#porpuse)
++ ![preparation](#preparation)
++ ![sequence diagram](#sequence-diagram)
+    + ![example](#example)
+    + ![client](#client)
 
 ## porpuse
-just for network programming exercice
+just for network programming exercice, don't report bug for me ^_^
 
 ## preparation
 1. install required module, e.g. pycryptodome
