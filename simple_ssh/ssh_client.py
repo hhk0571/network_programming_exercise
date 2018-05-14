@@ -2,7 +2,7 @@
 # coding: utf-8
 '''
 # ./ssh_client.py 192.168.56.111 54321
->>ls
+>> ls
 1024.txt
 2048.txt
 2050.txt
