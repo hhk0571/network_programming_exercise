@@ -160,7 +160,7 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
         except FileNotFoundError as e:
             return False
         except Exception as e:
-            print(e)
+            print('auth:', e)
             return False
 
     def send_json(self, data):
@@ -182,7 +182,7 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
                 data = json.loads(data.decode())
             return data
         except Exception as e:
-            self.print_msg('load json failed:', e)
+            self.print_msg('recv_json:', e)
         
 
     def send_response(self, status_code, data=None):
@@ -211,7 +211,7 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
             secure_data = self.request.recv(BUF_SIZE)
             if secure_data:
                 plain_data = self.aes.decrypt(secure_data)
-            return plain_data
+                return plain_data
         except Exception as e:
             print('secure_recv failed', e)
 
@@ -236,9 +236,9 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
                 plain_data = self.aes.decrypt_b64(secure_data)
                 self.print_msg('secure recv:', plain_data)
                 data = json.loads(plain_data.decode())
-            return data
+                return data
         except Exception as e:
-            self.print_msg('load json failed:', e)
+            self.print_msg('secure_recv_json:', e)
 
 
     def secure_send_response(self, status_code, data=None):

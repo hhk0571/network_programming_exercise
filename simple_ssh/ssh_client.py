@@ -149,7 +149,7 @@ class SSH_Client(object):
             secure_data = self.socket.recv(BUF_SIZE)
             if secure_data:
                 plain_data = self.aes.decrypt(secure_data)
-            return plain_data
+                return plain_data
         except Exception as e:
             print('secure_recv failed', e)
 
@@ -173,7 +173,7 @@ class SSH_Client(object):
             if secure_data:
                 plain_data = self.aes.decrypt_b64(secure_data)
                 data = json.loads(plain_data.decode())
-            return data
+                return data
         except Exception as e:
             print('load json failed', e)
 
