@@ -14,9 +14,9 @@ ssh_server.py
 '''
 
 import socket, sys, io, os, json
-from Crypto.PublicKey import RSA
-from Crypto.Cipher import PKCS1_OAEP
+from encrypt import RSA_Decryptor, AES_Encryptor
 from base64 import b64encode, b64decode
+import hashlib
 
 
 BUF_SIZE = 4096
@@ -36,14 +36,6 @@ def set_io_utf8():
         sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
 
 
-def decrypt(key_str, text, passphrase=None):
-    private_key = RSA.importKey(key_str, passphrase=passphrase)
-    cipher_rsa = PKCS1_OAEP.new(private_key)
-    decrypted_text = cipher_rsa.decrypt(b64decode(text))
-    
-    return decrypted_text.decode()
-
-
 class SSH_Client(object):
     def __init__(self, host, port):
         self.socket = socket.socket()
@@ -51,21 +43,24 @@ class SSH_Client(object):
         print('[%s:%s]' % self.socket.getsockname())
 
     def auth(self):
-        data = self.recv_data()
+        data = self.recv_json()
         if not data or data.get('action') != 'AUTH':
             return False
 
-        key_file = os.path.expanduser('~/.ssh/id_rsa')
-        if os.path.exists(key_file):
-            key = open(key_file).read()
-            decrypted_text = decrypt(key, data.get('data'))
+        decryptor = RSA_Decryptor('~/.ssh/id_rsa')
+        if decryptor is not None:
+            pwd = decryptor.decrypt_b64(data.get('data').encode())
+            cipher = decryptor.decrypt_b64(data.get('cipher').encode())
         else:
-            decrypted_text='unknown'
+            pwd = b'unknown'
 
-        response = {'action':'AUTH', 'data':decrypted_text}
-        self.send_data(response)
+        self.aes = AES_Encryptor(pwd)
+        encipher = self.aes.encrypt_b64(cipher)
+
+        response = {'action':'AUTH', 'data':encipher.decode()}
+        self.send_json(response)
         
-        data = self.recv_data()
+        data = self.recv_json()
         return data and data.get('status') == 200
 
     def run(self):
@@ -82,9 +77,9 @@ class SSH_Client(object):
                 if cmd == 'exit': break
                 
                 data = {'action':'CMD', 'cmd':cmd}
-                self.send_data(data)
+                self.secure_send_json(data)
 
-                data = self.recv_data()
+                data = self.secure_recv_json()
                 if not data:
                     print('Server disconnected')
                     break
@@ -95,7 +90,7 @@ class SSH_Client(object):
 
                 data_len = data.get('size')
                 data = {'action':'SIZE_CONFIRMED', 'data':data_len}
-                self.send_data(data)
+                self.secure_send_json(data)
 
                 all_data = b''
                 recv_size = 0
@@ -104,7 +99,9 @@ class SSH_Client(object):
                     #print('received %d bytes' %len(data))
                     recv_size += len(data)
                     all_data  += data
-                print(all_data.decode('utf-8')) #命令执行结果
+                
+                plain_data = self.aes.decrypt(all_data)
+                print(plain_data.decode('utf-8')) #命令执行结果
 
         except KeyboardInterrupt:
             print('\nBye bye!')
@@ -114,7 +111,7 @@ class SSH_Client(object):
             self.socket.close()
 
 
-    def send_data(self, data):
+    def send_json(self, data):
         '''
         send json data to client
         '''
@@ -122,15 +119,63 @@ class SSH_Client(object):
         self.socket.sendall(json.dumps(data).encode())
 
 
-    def recv_data(self):
+    def recv_json(self):
         '''
         receive json data from client
         '''
-        data = self.socket.recv(BUF_SIZE)
-        # print('recv:', data)
-        if data:
-            data = json.loads(data.decode())
-        return data
+        try:
+            data = self.socket.recv(BUF_SIZE)
+            # print('recv:', data)
+            if data:
+                data = json.loads(data.decode())
+            return data
+        except Exception as e:
+            print('load json failed', e)
+
+
+    def secure_send(self, data):
+        '''
+        send encrypted json data to peer
+        '''
+        secure_data = self.aes.encrypt(data)
+        self.socket.sendall(secure_data)
+
+
+    def secure_recv(self):
+        '''
+        receive encrypted data from peer
+        '''
+        try:
+            secure_data = self.socket.recv(BUF_SIZE)
+            if secure_data:
+                plain_data = self.aes.decrypt(secure_data)
+            return plain_data
+        except Exception as e:
+            print('secure_recv failed', e)
+
+
+    def secure_send_json(self, data):
+        '''
+        send encrypted json data to peer
+        '''
+        plain_data  = json.dumps(data).encode()
+        secure_data = self.aes.encrypt_b64(plain_data)
+        self.socket.sendall(secure_data)
+
+
+
+    def secure_recv_json(self):
+        '''
+        receive encrypted json data from peer
+        '''
+        try:
+            secure_data = self.socket.recv(BUF_SIZE)
+            if secure_data:
+                plain_data = self.aes.decrypt_b64(secure_data)
+                data = json.loads(plain_data.decode())
+            return data
+        except Exception as e:
+            print('load json failed', e)
 
 
 def main():

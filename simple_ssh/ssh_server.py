@@ -16,40 +16,18 @@ Server is running on port 54321; press Ctrl-C to terminate.
 
 '''
 import socket, socketserver
-import sys, os, random, json
+import sys, os, json
 import threading
 from subprocess import PIPE, Popen, STDOUT, TimeoutExpired 
 
-from Crypto.PublicKey import RSA
-from Crypto.Cipher import PKCS1_OAEP
-from base64 import b64encode, b64decode
+from encrypt import RSA_Encryptor, get_random_str, AES_Encryptor
+
+
+import hashlib
 
 BUF_SIZE = 4096
 host = ''
 port = 54321
-
-def encrypt(key_str, text):
-    key = RSA.importKey(key_str)
-    cipher_rsa = PKCS1_OAEP.new(key)
-    encrypted_text = cipher_rsa.encrypt(text.encode())
-    
-    return b64encode(encrypted_text).decode()
-
-
-def decrypt(key_str, text, passphrase=None):
-    private_key = RSA.importKey(key_str, passphrase=passphrase)
-    cipher_rsa = PKCS1_OAEP.new(private_key)
-    decrypted_text = cipher_rsa.decrypt(b64decode(text))
-    
-    return decrypted_text.decode()
-
-
-def get_random_str(len=8):
-    seed = ''.join([chr(i) for i in range(32,127)])
-    sa = []
-    for i in range(len):
-        sa.append(random.choice(seed))
-    return ''.join(sa)
 
 
 def exe_cmd(cmd, timeout=5):
@@ -108,22 +86,23 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
                 return
 
             while True:
-                data = self.recv_data()
+                data = self.secure_recv_json()
                 if not data: # client disconnected
                     break
                 if data.get('action') != 'CMD':
-                    self.send_response(203)
+                    self.secure_send_response(203)
 
                 res, err = exe_cmd(data.get('cmd'))
                 self.print_msg('cmd output:', res[:70], '...' if len(res)>70 else '')
                 
-                self.send_response(205, {'error':err, 'size': len(res)}) 
+                encrypted_res = self.aes.encrypt(res)
+                self.secure_send_response(205, {'error':err, 'size': len(encrypted_res)}) 
 
-                data = self.recv_data()
+                data = self.secure_recv_json()
                 if not data: # client disconnected
                     break
-                self.request.sendall(res)
-                self.print_msg('cmd done: sent', len(res), 'bytes')
+                self.request.sendall(encrypted_res)
+                self.print_msg('cmd done: sent', len(encrypted_res), 'bytes')
         except socket.timeout:
             self.print_msg('connection timeout')
         except Exception as e:
@@ -145,19 +124,37 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
 
     def auth(self):
         '''
-        verify authentication of connection.
-        return True on authentication ok, otherwise False.
+        verify authentication of connection, return True on success, otherwise False.
+
+        idea is as below:
+        1. randomly generate password and cipher
+        2. encrypted them using RSA public key
+        3. send encrypted password and cipher to client
+        4. client recevie encrypted password and cipher
+        5. client decrypt them using RSA private key
+        6. client encrypt the received cipher using the received password as AES key
+        7. client reply server with the AES encrypted cipher
+        8. server decrypt the received cipher, and verify if it's same to the sent cipher
+
         '''
-        rand_text = get_random_str(8)
-        self.print_msg('generate password:',repr(rand_text))
+        rsa = RSA_Encryptor()
+        password = get_random_str(8) # AES key shared between server and client
+        cipher   = get_random_str(8) # cipher for checking authentication of client
+        
+        self.aes = AES_Encryptor(password.encode())
+
+        self.print_msg('generate password:',repr(password), 'cipher:', repr(cipher))
         try:
             with open(os.path.expanduser('~/.ssh/authorized_keys')) as f:
                 for key in f.readlines():
-                    encrypted_text = encrypt(key, rand_text)
-                    data = {'action':'AUTH', 'data':encrypted_text}
-                    self.send_data(data)
-                    data = self.recv_data()
-                    if data.get('action') == 'AUTH' and data.get('data') == rand_text:
+                    rsa.load_keystr(key)
+                    enpwd = rsa.encrypt_b64(password.encode())
+                    encipher = rsa.encrypt_b64(cipher.encode())
+                    data = {'action':'AUTH', 'data':enpwd.decode(), 'cipher':encipher.decode()}
+                    self.send_json(data)
+                    data = self.recv_json()
+                    recv_cipher = self.aes.decrypt_b64(data.get('data').encode())
+                    if data.get('action') == 'AUTH' and  recv_cipher.decode() == cipher:
                         return True
                 return False
         except FileNotFoundError as e:
@@ -166,7 +163,7 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
             print(e)
             return False
 
-    def send_data(self, data):
+    def send_json(self, data):
         '''
         send json data to client
         '''
@@ -174,15 +171,19 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
         self.request.sendall(json.dumps(data).encode())
 
 
-    def recv_data(self):
+    def recv_json(self):
         '''
         receive json data from client
         '''
-        data = self.request.recv(BUF_SIZE)
-        self.print_msg('recv:', data)
-        if data:
-            data = json.loads(data.decode())
-        return data
+        try:
+            data = self.request.recv(BUF_SIZE)
+            self.print_msg('recv:', data)
+            if data:
+                data = json.loads(data.decode())
+            return data
+        except Exception as e:
+            self.print_msg('load json failed:', e)
+        
 
     def send_response(self, status_code, data=None):
         '''
@@ -191,8 +192,63 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
         response = {'status':status_code, 'msg':STATUS[status_code]}
         if data:
             response.update(data)
-        self.print_msg('send:', response)
-        self.request.sendall(json.dumps(response).encode())
+        self.send_json(response)
+
+
+    def secure_send(self, data):
+        '''
+        send encrypted json data to peer
+        '''
+        secure_data = self.aes.encrypt(data)
+        self.request.sendall(secure_data)
+
+
+    def secure_recv(self):
+        '''
+        receive encrypted data from peer
+        '''
+        try:
+            secure_data = self.request.recv(BUF_SIZE)
+            if secure_data:
+                plain_data = self.aes.decrypt(secure_data)
+            return plain_data
+        except Exception as e:
+            print('secure_recv failed', e)
+
+
+    def secure_send_json(self, data):
+        '''
+        send encrypted json data to peer
+        '''
+        self.print_msg('secure send:', data)
+        plain_data  = json.dumps(data).encode()
+        secure_data = self.aes.encrypt_b64(plain_data)
+        self.request.sendall(secure_data)
+
+
+    def secure_recv_json(self):
+        '''
+        receive encrypted json data from peer
+        '''
+        try:
+            secure_data = self.request.recv(BUF_SIZE)
+            if secure_data:
+                plain_data = self.aes.decrypt_b64(secure_data)
+                self.print_msg('secure recv:', plain_data)
+                data = json.loads(plain_data.decode())
+            return data
+        except Exception as e:
+            self.print_msg('load json failed:', e)
+
+
+    def secure_send_response(self, status_code, data=None):
+        '''
+        send encrypted response with json format to peer
+        '''
+        response = {'status':status_code, 'msg':STATUS[status_code]}
+        if data:
+            response.update(data)
+        self.secure_send_json(response)
 
     @classmethod
     def clean(cls):
