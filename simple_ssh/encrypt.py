@@ -26,15 +26,10 @@ class RSA_Encryptor(object):
         '''
         if key_file is None:
             return
-        
-        try:
-            with open(os.path.expanduser(key_file)) as f:
-                key_str = f.read()
-            key = RSA.importKey(key_str)
-            self._rsa = PKCS1_OAEP.new(key)
-        except FileNotFoundError as e:
-            print(e)
-            return
+        with open(os.path.expanduser(key_file)) as f:
+            key_str = f.read()
+        key = RSA.importKey(key_str)
+        self._rsa = PKCS1_OAEP.new(key)
 
     def load_keystr(self, key_str):
         '''
@@ -48,7 +43,6 @@ class RSA_Encryptor(object):
         RSA-Encrypt bytes-like object text and return a bytes object.
         '''
         return self._rsa.encrypt(text)
-
 
     def encrypt_b64(self, text):
         '''
@@ -66,15 +60,10 @@ class RSA_Decryptor(object):
         '''
         private key only
         '''
-        try:
-            with open(os.path.expanduser(key_file)) as f:
-                key_str = f.read()
-            key = RSA.importKey(key_str, passphrase=passphrase)
-            self._rsa = PKCS1_OAEP.new(key)
-        except FileNotFoundError as e:
-            print(e)
-            return
-
+        with open(os.path.expanduser(key_file)) as f:
+            key_str = f.read()
+        key = RSA.importKey(key_str, passphrase=passphrase)
+        self._rsa = PKCS1_OAEP.new(key)
 
     def decrypt(self, text):
         '''
@@ -82,13 +71,11 @@ class RSA_Decryptor(object):
         '''
         return self._rsa.decrypt(text)
 
-
     def decrypt_b64(self, text):
         '''
         RSA decrypt base64-encoded bytes-like object text and return a bytes object.
         '''
         text = b64decode(text)
-
         return self._rsa.decrypt(text)
 
 

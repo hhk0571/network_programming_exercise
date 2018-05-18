@@ -1,17 +1,5 @@
 #! /usr/bin/env python
 # coding: utf-8
-'''
-# ./ssh_client.py 192.168.56.111 54321
->> ls
-1024.txt
-2048.txt
-2050.txt
-4096.txt
-index.html
-ssh_client.py
-ssh_server.py
-
-'''
 
 import socket, sys, io, os, json
 from encrypt import RSA_Decryptor, AES_Encryptor
@@ -45,32 +33,29 @@ class SSH_Client(object):
     def auth(self):
         data = self.recv_json()
         if not data or data.get('action') != 'AUTH':
-            return False
+            raise PermissionError('Received invalid authentication data')
 
         decryptor = RSA_Decryptor('~/.ssh/id_rsa')
         if decryptor is not None:
             pwd = decryptor.decrypt_b64(data.get('data').encode())
             cipher = decryptor.decrypt_b64(data.get('cipher').encode())
         else:
-            pwd = b'unknown'
+            raise PermissionError('Decryption failed')
 
         self.aes = AES_Encryptor(pwd)
         encipher = self.aes.encrypt_b64(cipher)
-
         response = {'action':'AUTH', 'data':encipher.decode()}
         self.send_json(response)
-        
         data = self.recv_json()
-        return data and data.get('status') == 200
+        if data and data.get('status') == 200:
+            print('Authentication OK')
+        else:
+            print('Authentication NOK')
+            raise PermissionError('Authentication failed')
 
     def run(self):
         try:
-            if self.auth():
-                print('Authentication OK')
-            else:
-                print('Authentication NOK')
-                return 1
-
+            self.auth()
             while True:
                 cmd = input(">> ").strip()
                 if len(cmd) == 0: continue
@@ -79,11 +64,7 @@ class SSH_Client(object):
                 data = {'action':'CMD', 'cmd':cmd}
                 self.secure_send_json(data)
 
-                data = self.secure_recv_json()
-                if not data:
-                    print('Server disconnected')
-                    break
-                
+                data = self.secure_recv_json()                
                 if data.get('status') != 205:
                     print(data.get('msg'))
                     continue
@@ -101,15 +82,16 @@ class SSH_Client(object):
                     all_data  += data
                 
                 plain_data = self.aes.decrypt(all_data)
-                print(plain_data.decode('utf-8')) #命令执行结果
+                print(plain_data.decode('utf-8'))
 
         except KeyboardInterrupt:
             print('\nBye bye!')
-        except PermissionError:
-            pass
+        except PermissionError as e:
+            print(e)
+        except Exception as e:
+            print(e)
         finally:
             self.socket.close()
-
 
     def send_json(self, data):
         '''
@@ -118,20 +100,16 @@ class SSH_Client(object):
         # print('send:', data)
         self.socket.sendall(json.dumps(data).encode())
 
-
     def recv_json(self):
         '''
         receive json data from client
         '''
-        try:
-            data = self.socket.recv(BUF_SIZE)
-            # print('recv:', data)
-            if data:
-                data = json.loads(data.decode())
-            return data
-        except Exception as e:
-            print('load json failed', e)
-
+        data = self.socket.recv(BUF_SIZE)
+        # print('recv:', data)
+        if data:
+            return json.loads(data.decode())
+        else:
+            raise ConnectionAbortedError('server disconnected')
 
     def secure_send(self, data):
         '''
@@ -140,19 +118,15 @@ class SSH_Client(object):
         secure_data = self.aes.encrypt(data)
         self.socket.sendall(secure_data)
 
-
     def secure_recv(self):
         '''
         receive encrypted data from peer
         '''
-        try:
-            secure_data = self.socket.recv(BUF_SIZE)
-            if secure_data:
-                plain_data = self.aes.decrypt(secure_data)
-                return plain_data
-        except Exception as e:
-            print('secure_recv failed', e)
-
+        secure_data = self.socket.recv(BUF_SIZE)
+        if secure_data:
+            return self.aes.decrypt(secure_data)
+        else:
+            raise ConnectionAbortedError('server disconnected')
 
     def secure_send_json(self, data):
         '''
@@ -162,20 +136,16 @@ class SSH_Client(object):
         secure_data = self.aes.encrypt_b64(plain_data)
         self.socket.sendall(secure_data)
 
-
-
     def secure_recv_json(self):
         '''
         receive encrypted json data from peer
         '''
-        try:
-            secure_data = self.socket.recv(BUF_SIZE)
-            if secure_data:
-                plain_data = self.aes.decrypt_b64(secure_data)
-                data = json.loads(plain_data.decode())
-                return data
-        except Exception as e:
-            print('load json failed', e)
+        secure_data = self.socket.recv(BUF_SIZE)
+        if secure_data:
+            plain_data = self.aes.decrypt_b64(secure_data)
+            return json.loads(plain_data.decode())
+        else:
+            raise ConnectionAbortedError('server disconnected')
 
 
 def main():
