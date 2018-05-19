@@ -4,12 +4,9 @@ import socket, socketserver
 import sys, os, json
 import threading
 import time
-from subprocess import PIPE, Popen, STDOUT, TimeoutExpired 
-
+from subprocess import PIPE, Popen, STDOUT, TimeoutExpired
 from encrypt import RSA_Encryptor, get_random_str, AES_Encryptor
-
-
-import hashlib
+from msg import HEADER_SIZE, create_msg_header, parse_msg_header
 
 BUF_SIZE = 4096
 host = ''
@@ -23,10 +20,10 @@ def exe_cmd(cmd, timeout=10):
     '''
     process = Popen(cmd, stdout=PIPE, stderr=STDOUT, shell=True)
     try:
-        outs = process.communicate(timeout)[0]
+        outs = process.communicate(timeout=timeout)[0]
     except TimeoutExpired:
         process.terminate()
-        process.communicate()[0]
+        process.communicate()
         outs = cmd.encode() + b': command timeouted\n'
 
     err = process.returncode
@@ -59,22 +56,20 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
         self.print_msg('connected')
         with self.lock:
             self.conn_list.append(self.request)
-        #self.request.settimeout(1800) # 30 mins
-        #print('timeout=', self.request.gettimeout())
 
     # override
     def handle(self):
         try:
+            self.recv_data = b''
             self.auth()
-            # self.request.settimeout(1800) # 30 mins
-            self.request.settimeout(5) # 30 mins
+            self.request.settimeout(1800) # 30 mins
             while True:
-                data = self.secure_recv_json()
+                data = self.recv_msg()
                 func = getattr(self, data.get('action', ''), None)
                 if func is not None:
                     func(data)
                 else:
-                    self.secure_send_response(203) #Invalid request
+                    self.send_response(203, encrypt=True) #Invalid request
         except socket.timeout:
             self.print_msg('connection timeout')
         except ConnectionAbortedError:
@@ -90,8 +85,8 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
         self.print_msg('disconnected')
         with self.lock:
             self.conn_list.remove(self.request)
-        
-    
+
+
     def print_msg(self, *args, **kw):
         print('%s [%s:%s]' % (
             time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
@@ -116,7 +111,7 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
         '''
         password = get_random_str(8) # AES key shared between server and client
         cipher   = get_random_str(8) # cipher for checking authentication of client
-        
+
         self.aes = AES_Encryptor(password.encode())
         self.print_msg('generate password:',repr(password), 'cipher:', repr(cipher))
         self.request.settimeout(1) # 1 sec
@@ -127,18 +122,15 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
                 enpwd = rsa.encrypt_b64(password.encode())
                 encipher = rsa.encrypt_b64(cipher.encode())
                 data = {'action':'AUTH', 'data':enpwd.decode(), 'cipher':encipher.decode()}
-                self.send_json(data)
-                data = self.recv_json()
+                self.send_msg(data, encrypt=False)
+                data = self.recv_msg()
                 try:
                     recv_cipher = self.aes.decrypt_b64(data.get('data').encode())
                     if data.get('action') == 'AUTH' and  recv_cipher.decode() == cipher:
                         self.send_response(200) # authentication ok
-                        self.request.recv(BUF_SIZE) # receive ack
                         return
                 except:
                     self.send_response(201) # authentication nok
-                    # time.sleep(0.1)
-                    self.request.recv(BUF_SIZE) # receive ack
             else:
                 raise PermissionError('Authentication failed')
 
@@ -146,106 +138,67 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
     def CMD(self, *args, **kw):
         data = args[0]
         res, err = exe_cmd(data.get('cmd'))
-        self.print_msg('cmd output:', res[:70], '...' if len(res)>70 else '')
-        
-        encrypted_res = self.aes.encrypt(res)
-        self.secure_send_response(205, {'error':err, 'size': len(encrypted_res)}) 
+        self.send_response(205, {'error':err, 'output': res.decode()}, encrypt=True)
 
-        data = self.secure_recv_json()
-
-        self.request.sendall(encrypted_res)
-        self.print_msg('cmd done: sent', len(encrypted_res), 'bytes')
-
-
-    def send_json(self, data):
+    def send_msg(self, data, encrypt=False):
         '''
-        send json data to client
+        send msg with header + body to client
         '''
-        self.print_msg('send:', data)
-        self.request.sendall(json.dumps(data).encode())
+        body = json.dumps(data).encode()
+        self.print_msg('send msg:', body[:1024])
+        if encrypt:
+            body = self.aes.encrypt_b64(body)
+        header = create_msg_header(len(body), encrypt)
+        self.request.sendall(header+body)
 
 
-    def recv_json(self):
+    def recv_msg(self):
         '''
-        receive json data from client
+        receive msg with header + body
         '''
-        data = self.request.recv(BUF_SIZE)
-        self.print_msg('recv:', data)
-        if data:
-            data = json.loads(data.decode())
-            return data
-        else:
-            raise ConnectionAbortedError('client disconnected')
-        
+        while True:
+            if len(self.recv_data) >= HEADER_SIZE:
+                magic,ver,msg_size,encryted = parse_msg_header(self.recv_data[:HEADER_SIZE])
+                #self.print_msg('recv header: magic=%r ver=%r size=%r encrypted=%r' % (magic,ver,msg_size,encryted))
 
-    def send_response(self, status_code, data=None):
+                if magic != b'MSG':
+                    raise PermissionError('Invalid msg')
+
+                while len(self.recv_data) < msg_size:
+                    data = self.request.recv(BUF_SIZE)
+                    if not data:
+                        raise ConnectionAbortedError('client disconnected')
+                    self.recv_data += data
+
+                body = self.recv_data[HEADER_SIZE:msg_size]
+                self.recv_data = self.recv_data[msg_size:]
+                if encryted:
+                    body = self.aes.decrypt_b64(body)
+                self.print_msg('recv msg:', body)
+                return json.loads(body.decode())
+            else:
+                # header not completed, continue receive data
+                data = self.request.recv(BUF_SIZE)
+                if not data:
+                    raise ConnectionAbortedError('client disconnected')
+                self.recv_data += data
+
+
+    def send_response(self, status_code, data=None, encrypt=False):
         '''
         send response with json format to client
         '''
         response = {'status':status_code, 'msg':STATUS[status_code]}
         if data:
             response.update(data)
-        self.send_json(response)
+        self.send_msg(response, encrypt)
 
-
-    def secure_send(self, data):
-        '''
-        send encrypted json data to peer
-        '''
-        secure_data = self.aes.encrypt(data)
-        self.request.sendall(secure_data)
-
-
-    def secure_recv(self):
-        '''
-        receive encrypted data from peer
-        '''
-        secure_data = self.request.recv(BUF_SIZE)
-        if secure_data:
-            plain_data = self.aes.decrypt(secure_data)
-            return plain_data
-        else:
-            raise ConnectionAbortedError('client disconnected')
-
-
-    def secure_send_json(self, data):
-        '''
-        send encrypted json data to peer
-        '''
-        self.print_msg('secure send:', data)
-        plain_data  = json.dumps(data).encode()
-        secure_data = self.aes.encrypt_b64(plain_data)
-        self.request.sendall(secure_data)
-
-
-    def secure_recv_json(self):
-        '''
-        receive encrypted json data from peer
-        '''
-        secure_data = self.request.recv(BUF_SIZE)
-        if secure_data:
-            plain_data = self.aes.decrypt_b64(secure_data)
-            self.print_msg('secure recv:', plain_data)
-            data = json.loads(plain_data.decode())
-            return data
-        else:
-            raise ConnectionAbortedError('client disconnected')
-
-
-    def secure_send_response(self, status_code, data=None):
-        '''
-        send encrypted response with json format to peer
-        '''
-        response = {'status':status_code, 'msg':STATUS[status_code]}
-        if data:
-            response.update(data)
-        self.secure_send_json(response)
 
     @classmethod
     def clean(cls):
         with cls.lock:
             for c in cls.conn_list:
-                # shutdown sockects then recv functions return 
+                # shutdown sockects then recv functions return
                 # empty data (b''), so that sub-threads terminate
                 c.shutdown(socket.SHUT_RDWR)
 
