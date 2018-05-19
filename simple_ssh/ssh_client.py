@@ -31,27 +31,32 @@ class SSH_Client(object):
         print('[%s:%s]' % self.socket.getsockname())
 
     def auth(self):
-        data = self.recv_json()
-        if not data or data.get('action') != 'AUTH':
-            raise PermissionError('Received invalid authentication data')
+        while True:
+            try:
+                data = self.recv_json()
+            except ConnectionAbortedError:
+                print('Authentication NOK')
+                raise
+            
+            if data.get('action') != 'AUTH':
+                raise PermissionError('Received invalid authentication data')
+            try:
+                decryptor = RSA_Decryptor('~/.ssh/id_rsa')
+                pwd = decryptor.decrypt_b64(data.get('data').encode())
+                cipher = decryptor.decrypt_b64(data.get('cipher').encode())
+            except: # invalid decryption
+                pwd    = b'unknown'
+                cipher = b'unknown'
 
-        decryptor = RSA_Decryptor('~/.ssh/id_rsa')
-        if decryptor is not None:
-            pwd = decryptor.decrypt_b64(data.get('data').encode())
-            cipher = decryptor.decrypt_b64(data.get('cipher').encode())
-        else:
-            raise PermissionError('Decryption failed')
-
-        self.aes = AES_Encryptor(pwd)
-        encipher = self.aes.encrypt_b64(cipher)
-        response = {'action':'AUTH', 'data':encipher.decode()}
-        self.send_json(response)
-        data = self.recv_json()
-        if data and data.get('status') == 200:
-            print('Authentication OK')
-        else:
-            print('Authentication NOK')
-            raise PermissionError('Authentication failed')
+            self.aes = AES_Encryptor(pwd)
+            encipher = self.aes.encrypt_b64(cipher)
+            response = {'action':'AUTH', 'data':encipher.decode()}
+            self.send_json(response)
+            data = self.recv_json()
+            self.socket.send(b'1') # send ack
+            if data and data.get('status') == 200:
+                print('Authentication OK')
+                return
 
     def run(self):
         try:
@@ -88,9 +93,12 @@ class SSH_Client(object):
             print('\nBye bye!')
         except PermissionError as e:
             print(e)
+        except ConnectionAbortedError as e:
+            print(e)
         except Exception as e:
             print(e)
         finally:
+            # self.socket.shutdown(socket.SHUT_RDWR)
             self.socket.close()
 
     def send_json(self, data):

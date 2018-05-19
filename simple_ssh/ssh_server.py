@@ -16,14 +16,14 @@ host = ''
 port = 54321
 
 
-def exe_cmd(cmd, timeout=5):
+def exe_cmd(cmd, timeout=10):
     '''
     execute command.
     return output, errcode
     '''
     process = Popen(cmd, stdout=PIPE, stderr=STDOUT, shell=True)
     try:
-        outs = process.communicate(timeout=5)[0]
+        outs = process.communicate(timeout)[0]
     except TimeoutExpired:
         process.terminate()
         process.communicate()[0]
@@ -66,6 +66,8 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
     def handle(self):
         try:
             self.auth()
+            # self.request.settimeout(1800) # 30 mins
+            self.request.settimeout(5) # 30 mins
             while True:
                 data = self.secure_recv_json()
                 func = getattr(self, data.get('action', ''), None)
@@ -112,27 +114,32 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
         8. server decrypt the received cipher, and verify if it's same to the sent cipher
 
         '''
-        rsa = RSA_Encryptor()
         password = get_random_str(8) # AES key shared between server and client
         cipher   = get_random_str(8) # cipher for checking authentication of client
         
         self.aes = AES_Encryptor(password.encode())
         self.print_msg('generate password:',repr(password), 'cipher:', repr(cipher))
-
+        self.request.settimeout(1) # 1 sec
         with open(os.path.expanduser('~/.ssh/authorized_keys')) as f:
             for key in f.readlines():
+                rsa = RSA_Encryptor()
                 rsa.load_keystr(key)
                 enpwd = rsa.encrypt_b64(password.encode())
                 encipher = rsa.encrypt_b64(cipher.encode())
                 data = {'action':'AUTH', 'data':enpwd.decode(), 'cipher':encipher.decode()}
                 self.send_json(data)
                 data = self.recv_json()
-                recv_cipher = self.aes.decrypt_b64(data.get('data').encode())
-                if data.get('action') == 'AUTH' and  recv_cipher.decode() == cipher:
-                    self.send_response(200) # authentication ok
-                    return
+                try:
+                    recv_cipher = self.aes.decrypt_b64(data.get('data').encode())
+                    if data.get('action') == 'AUTH' and  recv_cipher.decode() == cipher:
+                        self.send_response(200) # authentication ok
+                        self.request.recv(BUF_SIZE) # receive ack
+                        return
+                except:
+                    self.send_response(201) # authentication nok
+                    # time.sleep(0.1)
+                    self.request.recv(BUF_SIZE) # receive ack
             else:
-                self.send_response(201) # authentication nok
                 raise PermissionError('Authentication failed')
 
 
