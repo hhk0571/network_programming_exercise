@@ -13,14 +13,14 @@ simulate simple FTP, just for network programming exercice, please don't report 
 
 ## description
 only implemented following commands
-|command|notes|
-|-------|-----|
-|ls \[dir\|file\]|list directories or files|
-|cd \<dir\>|change dir|
-|pwd| current dir|
-|get \<filename\>|get file from server|
-|put \<filename\>|put file to server|
-|exit|disconnect from server|
+| command | notes |
+| ------- | ----- |
+| ls \[dir\|file\] | list directories or files |
+| cd \<dir\> | change dir |
+| pwd | current dir |
+| get \<filename\> | get file from server |
+| put \<filename\> | put file to server |
+| exit | disconnect from server |
 
 ## sequence diagram
 TBD
