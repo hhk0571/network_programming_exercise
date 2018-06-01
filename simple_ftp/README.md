@@ -16,7 +16,7 @@ only implemented following commands
 
 | command | notes |
 | :------- | :----- |
-| `ls [dir|file]` | list directories or files |
+| `ls [dir or file]` | list directories or files |
 | `cd <dir>` | change dir |
 | `pwd` | current dir |
 | `get <filename>` | get file from server |
