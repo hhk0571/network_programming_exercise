@@ -1,2 +1,6 @@
 .vscode
 *.pyc
+*.iso
+*.mp*
+simple_ftp/ftpServer/home
+simple_ftp/ftpServer/log

@@ -64,6 +64,12 @@ sequence.uml
 ssh_client.py
 ssh_server.py
 
+>> help
+<CMD> .................. Non-interactive commands, e.g. ls
+debug on ............... Turn on debugging
+debug off .............. Turn off debugging
+exit ................... Exit
+
 >> 
 
 ```
