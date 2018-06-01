@@ -1,6 +1,5 @@
 # coding: utf-8
 import struct
-from encrypt import RSA_Encryptor, get_random_str, AES_Encryptor
 
 MAGIC_STR = b'MSG'
 STRUCT_FMT = '!3s2I?'

@@ -40,18 +40,15 @@ simulate simple ssh, just for network programming exercice, please don't report 
 ## example
 ### server
 ``` bash
-[root@MiniCentOS_1 simple_ssh]# ./ssh_server.py 
+# ./ssh_server.py 
 Server is running on port 54321; press Ctrl-C to terminate.
-[192.168.56.111:40744] connected
-[192.168.56.111:40744] generate password: '7I!^6M+4' cipher: '}Q{G7G43'
-[192.168.56.111:40744] send: {'cipher': 'Y8ZJytzorEXzHJ8ZOrcHlXGnnmwNK9VUqVmy+3yOwl9yWJ/e0d3RRmPP6RdG6NIs5REKocZzanppbHUJyqtpwTWb+La8RqjgLcOuivxINKAoTJOS79t/htU0XL2pZPI7JJyH2
-PusnKnEm1OIhGMUW/1ekoLX3G0KV+KOXQQzBEvyil86FZL3CfodO4zxMatPZHgS/rLkid3CPulIoifn0kdU0RjV460XcnHFkrx7T8dqU2bwkf8UEiPDMhFl933SVboeItM+Xgway7OFkh/rN5wdKjg/JTejeo4uFJqyFcSBZAZk4v8vOr51KVWJ7wWGKCMSZu/Tx4jotbQdop7aKQ==', 'data': 'RRUSlu8aQ4AzitUHHFfZvLY9VKW4P96cnWivIzm8k0N6sdBKZZrHne9UuqmszrSN0+oJDZYcQhBRwaLM0rBPa6ANkULcS3IgX8UKnl8OsxJqMZzASa0oDaPdUQChNDIBentHwkHvlX2hPKb8mBTi/7X0ot9Kfqeg4Rdq2l7mDEW2ukgk5C86lRTUcK2Qh5ftUqLi9Z486hOGb+8mqK0NkHcpSauy3IFkpCL0lbWAfGUh1F5RxAFROiC2JsPXna0f048i4yi8vz/c0EBWF3rIQJBCgD1EjPkank0rsTLSVrnvzxY1cjWQ+nOgiRkf9IQNCD4GYr7WHB68wV2hC3YjQA==', 'action': 'AUTH'}[192.168.56.111:40744] recv: b'{"action": "AUTH", "data": "lyFkD6g+b/Vh5XnIcemYOg=="}'
-[192.168.56.111:40744] send: {'msg': 'Authentication OK', 'status': 200}
-[192.168.56.111:40744] secure recv: b'{"action": "CMD", "cmd": "ls"}'
-[192.168.56.111:40744] cmd output: b'docs\nencrypt.py\n__pycache__\nREADME.md\nrequirements.txt\nsequence_diagra' ...
-[192.168.56.111:40744] secure send: {'msg': 'Command executed', 'error': 0, 'size': 128, 'status': 205}
-[192.168.56.111:40744] secure recv: b'{"action": "SIZE_CONFIRMED", "data": 128}'
-[192.168.56.111:40744] cmd done: sent 128 bytes
+2018-05-20 20:37:12 [192.168.56.111:40068] connected
+2018-05-20 20:37:12 [192.168.56.111:40068] generate password: 'L;X;;#8l' cipher: 'RoOKVfkj'
+2018-05-20 20:37:13 [192.168.56.111:40068] send msg: b'{"data": "aApMGuszUnaqwLmPuWsUyY8+Th25ncWVdaOSC8AuGbb42OtLFLEjvREGLGd7nbukX4ZM8WdyjqyvEuZFhNhr6hyZyYgzMgaVgzEKmh25iQG4qXaClB4codiMJZOmcp59JI5QBpbWKCuFV0gtOTvkZiM6aOCze6/mSs2jaZ5Zy9ooWdXiK4p4h0zlGS/pFiC7/XHa8i3aGbCKhYUUrEuqWGsV4HgdXX8vubyMLVX3PwY7weU0riB4d9iNJuVUbF6CTszIBdfTcCqUIplfrsgWPjCo3+jAU58L3fhdbOChZyhYaBsyoh3aw1PQDdM0Jmmo5+JrYYX6flGzh+9lVMvnHQ==", "cipher": "NNIbLKAmUrNgv666OXRelurKVFBIXe9rblTtJT/yVbIWPhbP7V9Ohupszbsdx958lQQ8NpEk+T4ovbmHKcZA1/TwMug+t5BVWSC404TLvL1Hfd5U0TwUNuVVjl+RM/mZy60VLl9+BxXeymGBjy1pStKVJ5GJCJphJmmqHSzO+BjQ2kQ4smSvOAD/ne/yu9kj30TKTrzDXNgJt1bmH7EsfISSvRcYL8W6TGNz2ut7TDCtu63PIlYvc7rNlL9ZZHSDVhfMppZ+icuB3/L7hxfuNaft+AWfJlyanBacgb3qe7Lp8nXwxoCCz3Bad1bNRikh01bVgpsvfAWakmfwy4Qptg==", "action": "AUTH"}'
+2018-05-20 20:37:13 [192.168.56.111:40068] recv msg: b'{"action": "AUTH", "data": "Bg8kE8bdXRyuHQRA7ftvIg=="}'
+2018-05-20 20:37:13 [192.168.56.111:40068] send msg: b'{"msg": "Authentication OK", "status": 200}'
+2018-05-20 20:37:18 [192.168.56.111:40068] recv msg: b'{"action": "CMD", "cmd": "ls"}'
+2018-05-20 20:37:18 [192.168.56.111:40068] send msg: b'{"msg": "Command executed", "output": "docs\\nencrypt.py\\nmsg.py\\n__pycache__\\nREADME.md\\nrequirements.txt\\nseq_authentication.png\\nseq_overview.png\\nsequence.uml\\nssh_client.py\\nssh_server.py\\ntests\\n", "error": 0, "status": 205}'
 
 ```
 ### client

@@ -3,7 +3,7 @@
 
 import socket, sys, io, os, json, struct
 import logging
-from encrypt import RSA_Decryptor, AES_Encryptor
+from encrypt import RSA_Decipher, AES_Cipher
 from msg import HEADER_SIZE, create_msg_header, parse_msg_header
 
 logger = logging.getLogger('ssh_client')
@@ -54,14 +54,14 @@ class SSH_Client(object):
             if data.get('action') != 'AUTH':
                 raise PermissionError('Received invalid authentication data')
             try:
-                decryptor = RSA_Decryptor('~/.ssh/id_rsa')
+                decryptor = RSA_Decipher('~/.ssh/id_rsa')
                 pwd = decryptor.decrypt_b64(data.get('data').encode())
                 cipher = decryptor.decrypt_b64(data.get('cipher').encode())
             except: # invalid decryption
                 pwd    = b'unknown'
                 cipher = b'unknown'
 
-            self.aes = AES_Encryptor(pwd)
+            self.aes = AES_Cipher(pwd)
             encipher = self.aes.encrypt_b64(cipher)
             response = {'action':'AUTH', 'data':encipher.decode()}
             self.send_msg(response)

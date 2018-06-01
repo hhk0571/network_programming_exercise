@@ -5,7 +5,7 @@ import sys, os, json
 import threading
 import time
 from subprocess import PIPE, Popen, STDOUT, TimeoutExpired
-from encrypt import RSA_Encryptor, get_random_str, AES_Encryptor
+from encrypt import RSA_Cipher, get_random_str, AES_Cipher
 from msg import HEADER_SIZE, create_msg_header, parse_msg_header
 
 BUF_SIZE = 4096
@@ -112,12 +112,12 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
         password = get_random_str(8) # AES key shared between server and client
         cipher   = get_random_str(8) # cipher for checking authentication of client
 
-        self.aes = AES_Encryptor(password.encode())
+        self.aes = AES_Cipher(password.encode())
         self.print_msg('generate password:',repr(password), 'cipher:', repr(cipher))
         self.request.settimeout(1) # 1 sec
         with open(os.path.expanduser('~/.ssh/authorized_keys')) as f:
             for key in f.readlines():
-                rsa = RSA_Encryptor()
+                rsa = RSA_Cipher()
                 rsa.load_keystr(key)
                 enpwd = rsa.encrypt_b64(password.encode())
                 encipher = rsa.encrypt_b64(cipher.encode())
