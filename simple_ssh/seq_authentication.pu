@@ -1,0 +1,24 @@
+@startuml authentication
+title simple SSH authentication
+participant Server_thread as thread
+participant Client
+autonumber "<font color=red><b>(#)"
+activate thread
+activate Client
+rnote over thread: generate onetime password and cipher
+rnote over thread
+encrypt password and cipher with RSA
+public key in ~/.ssh/authorized_keys
+end note
+
+
+thread -> Client: encrypted password and cipher
+rnote over Client: decrypt with RSA private key
+rnote over Client: encrypt cipher with received password as AES key
+thread <- Client: AES encrypted cipher
+
+rnote over thread: decrypt the received cipher using password
+rnote over thread: verify if the decrypted cipher is same to orginal one
+thread -> Client: authentication result
+
+@enduml
